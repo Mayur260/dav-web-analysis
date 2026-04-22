@@ -114,7 +114,7 @@ st.divider()
 st.markdown("## 🔢 Key Metrics")
 k1, k2, k3, k4, k5, k6 = st.columns(6)
 
-k1.metric("💰 Total Revenue",    f"₹{int(df['Revenue'].sum()):,}")
+k1.metric("💰 Total Revenue",    f"${int(df['Revenue'].sum()):,}")
 k2.metric("📊 Total Sessions",   f"{int(df['Sessions'].sum()):,}")
 k3.metric("👥 Total Users",      f"{int(df['Users'].sum()):,}")
 k4.metric("🎯 Avg Conversion",   f"{df['Conversion Rate (%)'].mean():.2f}%")
