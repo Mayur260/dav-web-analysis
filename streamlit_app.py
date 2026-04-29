@@ -1,3 +1,8 @@
+"""
+Web Analytics Dashboard
+Combines original dataset logic with professional UI from reference project.
+"""
+
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -7,6 +12,7 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
 import seaborn as sns
 from scipy import stats as scipy_stats
+from scipy.stats import gaussian_kde
 
 # ══════════════════════════════════════════════
 # PAGE CONFIG
@@ -23,152 +29,122 @@ st.set_page_config(
 # ══════════════════════════════════════════════
 st.markdown("""
 <style>
-    /* ── Base ── */
-    html, body, [class*="css"] {
-        font-family: 'Segoe UI', system-ui, sans-serif;
-    }
-    .main { background-color: #0d1117; }
-    .block-container { padding: 1.8rem 3rem 3rem 3rem; }
+    @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap');
 
-    /* ── Header banner ── */
-    .dash-header {
-        background: linear-gradient(135deg, #161b22 0%, #1c2333 100%);
-        border: 1px solid #30363d;
-        border-radius: 14px;
-        padding: 28px 36px;
-        margin-bottom: 28px;
-        display: flex;
-        align-items: center;
-        gap: 16px;
-    }
-    .dash-header h1 {
-        color: #e6edf3;
-        font-size: 2rem;
-        font-weight: 700;
-        margin: 0;
-    }
-    .dash-header p {
-        color: #8b949e;
-        font-size: 0.95rem;
-        margin: 4px 0 0 0;
-    }
+    html, body, [class*="css"] { font-family: 'Outfit', sans-serif; }
+    h1, h2, h3, h4, h5, h6    { font-family: 'Outfit', sans-serif !important; font-weight: 600 !important; }
 
-    /* ── Section titles ── */
-    .section-title {
-        color: #e6edf3;
-        font-size: 1.15rem;
-        font-weight: 600;
-        letter-spacing: 0.04em;
+    .main { background-color: #0E1117; }
+    .block-container { padding-top: 2.5rem !important; padding-bottom: 2.5rem !important; max-width: 1440px; }
+
+    /* Metric cards */
+    div[data-testid="stMetric"] {
+        background-color: #1A1C24;
+        border: 1px solid #2D3748;
+        padding: 20px 24px;
+        border-radius: 12px;
+        box-shadow: 0 8px 16px rgba(0,0,0,0.4);
+        transition: transform 0.2s ease-in-out, border-color 0.2s;
+    }
+    div[data-testid="stMetric"]:hover { transform: translateY(-4px); border-color: #00E6FF; }
+    div[data-testid="stMetricLabel"] {
+        color: #A0AEC0 !important;
+        font-weight: 500;
         text-transform: uppercase;
-        margin: 0 0 16px 0;
-        padding-bottom: 8px;
-        border-bottom: 2px solid #21262d;
+        letter-spacing: 1px;
+        font-size: 13px;
     }
+    div[data-testid="stMetricValue"] { color: #00E6FF !important; font-weight: 700; font-size: 28px; }
+    div[data-testid="stMetricDelta"] { color: #00E396 !important; }
 
-    /* ── KPI cards ── */
-    .kpi-card {
-        background: #161b22;
-        border: 1px solid #30363d;
-        border-radius: 12px;
-        padding: 20px 16px 16px 16px;
-        text-align: center;
-        transition: border-color 0.2s;
-    }
-    .kpi-card:hover { border-color: #58a6ff; }
-    .kpi-icon  { font-size: 1.6rem; margin-bottom: 6px; }
-    .kpi-label { color: #8b949e; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px; }
-    .kpi-value { color: #e6edf3; font-size: 1.45rem; font-weight: 700; }
-
-    /* ── Stat cards ── */
-    .stat-card {
-        background: #161b22;
-        border: 1px solid #30363d;
-        border-radius: 12px;
-        padding: 18px 16px;
-        text-align: center;
-    }
-    .stat-label { color: #8b949e; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px; }
-    .stat-value { color: #58a6ff; font-size: 1.3rem; font-weight: 700; }
-
-    /* ── Chart wrapper ── */
-    .chart-card {
-        background: #161b22;
-        border: 1px solid #30363d;
-        border-radius: 12px;
-        padding: 20px;
-        margin-bottom: 20px;
-    }
-
-    /* ── Tab styling ── */
-    .stTabs [data-baseweb="tab-list"] { gap: 8px; background: transparent; }
+    /* Tabs */
+    .stTabs [data-baseweb="tab-list"] { gap: 20px; }
     .stTabs [data-baseweb="tab"] {
-        background: #161b22;
-        border: 1px solid #30363d;
-        border-radius: 8px;
-        color: #8b949e;
-        padding: 6px 18px;
+        height: 50px;
+        background-color: transparent;
+        border-radius: 4px 4px 0 0;
+        padding: 10px 18px;
+        color: #A0AEC0;
+        font-weight: 500;
     }
     .stTabs [aria-selected="true"] {
-        background: #21262d;
-        border-color: #58a6ff;
-        color: #e6edf3 !important;
+        border-bottom: 3px solid #00E6FF !important;
+        color: #00E6FF !important;
+        font-weight: 700 !important;
     }
 
-    /* ── Divider ── */
-    hr { border-color: #21262d !important; }
+    /* Stat cards */
+    .stat-card {
+        background-color: #1A1C24;
+        border: 1px solid #2D3748;
+        border-radius: 12px;
+        padding: 20px 16px;
+        text-align: center;
+        transition: border-color 0.2s, transform 0.2s;
+    }
+    .stat-card:hover { border-color: #00E6FF; transform: translateY(-3px); }
+    .stat-label { color: #A0AEC0; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.07em; margin-bottom: 8px; }
+    .stat-value { color: #00E6FF; font-size: 1.4rem; font-weight: 700; }
 
-    /* ── Dataframe ── */
+    hr { border-color: #2D3748 !important; }
     .stDataFrame { border-radius: 10px; overflow: hidden; }
 </style>
 """, unsafe_allow_html=True)
 
 # ══════════════════════════════════════════════
-# COLOUR PALETTE (shared by all charts)
+# MATPLOTLIB DARK THEME
 # ══════════════════════════════════════════════
+plt.style.use('dark_background')
+sns.set_style("darkgrid", {
+    "axes.facecolor": "#1A1C24",
+    "grid.color": "#2D3748",
+    "figure.facecolor": "#0E1117"
+})
+
 PAL = {
-    'bg':      '#0d1117',
-    'card':    '#161b22',
-    'border':  '#30363d',
-    'accent':  '#58a6ff',
-    'green':   '#3fb950',
-    'orange':  '#f0883e',
-    'red':     '#f85149',
-    'text':    '#e6edf3',
-    'muted':   '#8b949e',
-    'grid':    '#21262d',
+    'bg':     '#0E1117',
+    'card':   '#1A1C24',
+    'border': '#2D3748',
+    'cyan':   '#00E6FF',
+    'green':  '#00E396',
+    'purple': '#775DD0',
+    'orange': '#FEB019',
+    'red':    '#FF4560',
+    'text':   '#FAFAFA',
+    'muted':  '#A0AEC0',
+    'grid':   '#2D3748',
 }
 
 # ══════════════════════════════════════════════
-# HELPER – STYLE CHART AXES
+# HELPERS
 # ══════════════════════════════════════════════
-def style_ax(ax, title='', xlabel='', ylabel=''):
+def style_ax(fig, ax, title='', xlabel='', ylabel=''):
+    fig.patch.set_facecolor(PAL['bg'])
     ax.set_facecolor(PAL['card'])
-    ax.set_title(title, color=PAL['text'], fontsize=12, fontweight='bold', pad=14)
-    ax.set_xlabel(xlabel, color=PAL['muted'], fontsize=9)
-    ax.set_ylabel(ylabel, color=PAL['muted'], fontsize=9)
-    ax.tick_params(colors=PAL['muted'], labelsize=8)
-    for spine in ax.spines.values():
-        spine.set_edgecolor(PAL['grid'])
-    ax.grid(color=PAL['grid'], linewidth=0.6, linestyle='--', alpha=0.7)
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    ax.spines['left'].set_color(PAL['border'])
+    ax.spines['bottom'].set_color(PAL['border'])
+    ax.tick_params(colors=PAL['muted'], labelsize=9)
+    ax.xaxis.label.set_color(PAL['muted'])
+    ax.yaxis.label.set_color(PAL['muted'])
+    if title:
+        ax.set_title(title, color=PAL['text'], fontsize=13, fontweight='bold', pad=14)
+    if xlabel:
+        ax.set_xlabel(xlabel, fontsize=10)
+    if ylabel:
+        ax.set_ylabel(ylabel, fontsize=10)
 
-def make_fig(w=7, h=4):
-    fig, ax = plt.subplots(figsize=(w, h), facecolor=PAL['bg'])
-    return fig, ax
-
-def kpi(icon, label, value):
-    return f"""
-    <div class="kpi-card">
-        <div class="kpi-icon">{icon}</div>
-        <div class="kpi-label">{label}</div>
-        <div class="kpi-value">{value}</div>
-    </div>"""
+def make_fig(w=10, h=5):
+    return plt.subplots(figsize=(w, h), facecolor=PAL['bg'])
 
 def stat_card(label, value):
-    return f"""
-    <div class="stat-card">
-        <div class="stat-label">{label}</div>
-        <div class="stat-value">{value}</div>
-    </div>"""
+    return (
+        f"<div class='stat-card'>"
+        f"<div class='stat-label'>{label}</div>"
+        f"<div class='stat-value'>{value}</div>"
+        f"</div>"
+    )
 
 # ══════════════════════════════════════════════
 # LOAD & CLEAN DATA
@@ -209,217 +185,382 @@ def load_data():
 
     return df
 
-df = load_data()
+
+@st.cache_data
+def load_raw_for_duplicates():
+    """Used only for duplicate count in the quality tab."""
+    try:
+        return int(pd.read_csv('Web_Analytic_Dataset.csv').duplicated().sum())
+    except Exception:
+        return 0
+
+
+df     = load_data()
 num_df = df.select_dtypes(include='number').drop(columns=['Year'], errors='ignore')
 
 # ══════════════════════════════════════════════
 # HEADER
 # ══════════════════════════════════════════════
 st.markdown("""
-<div class="dash-header">
-    <div>
-        <h1>📊 Web Analytics Dashboard</h1>
-        <p>Traffic · Revenue · Conversion · Sessions — all in one place</p>
-    </div>
+<div style='margin-bottom:1.5rem; padding-top:0.5rem;'>
+    <h1 style='display:flex; align-items:center; gap:12px; font-size:38px;
+               font-weight:700; margin-bottom:8px; color:#FAFAFA;'>
+        <svg width="34" height="34" viewBox="0 0 24 24" fill="none"
+             stroke="#00E6FF" stroke-width="2.5"
+             stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="20" x2="18" y2="10"/>
+            <line x1="12" y1="20" x2="12" y2="4"/>
+            <line x1="6"  y1="20" x2="6"  y2="14"/>
+        </svg>
+        <span><span style='color:#00E6FF;'>Web</span> Analytics Dashboard</span>
+    </h1>
+    <p style='font-size:15px; color:#A0AEC0; margin-top:0; padding-left:46px;'>
+        Traffic &nbsp;·&nbsp; Revenue &nbsp;·&nbsp; Conversion &nbsp;·&nbsp; Sessions
+    </p>
 </div>
 """, unsafe_allow_html=True)
 
 # ══════════════════════════════════════════════
-# SECTION 1 – KPI CARDS
+# KPI ROW
 # ══════════════════════════════════════════════
-st.markdown('<p class="section-title">📌 Key Performance Indicators</p>', unsafe_allow_html=True)
+k1, k2, k3, k4, k5, k6 = st.columns(6)
+k1.metric("💰 Total Revenue",   f"${int(df['Revenue'].sum()):,}")
+k2.metric("📊 Total Sessions",  f"{int(df['Sessions'].sum()):,}")
+k3.metric("👥 Total Users",     f"{int(df['Users'].sum()):,}")
+k4.metric("🎯 Avg Conversion",  f"{df['Conversion Rate (%)'].mean():.2f}%")
+k5.metric("↩️ Avg Bounce Rate", f"{df['Bounce Rate'].mean():.2f}%")
+k6.metric("🛒 Transactions",    f"{int(df['Transactions'].sum()):,}")
 
-c1, c2, c3, c4, c5, c6 = st.columns(6)
-cards = [
-    (c1, "💰", "Total Revenue",    f"${int(df['Revenue'].sum()):,}"),
-    (c2, "📊", "Total Sessions",   f"{int(df['Sessions'].sum()):,}"),
-    (c3, "👥", "Total Users",      f"{int(df['Users'].sum()):,}"),
-    (c4, "🎯", "Avg Conversion",   f"{df['Conversion Rate (%)'].mean():.2f}%"),
-    (c5, "↩️", "Avg Bounce Rate",  f"{df['Bounce Rate'].mean():.2f}%"),
-    (c6, "🛒", "Transactions",     f"{int(df['Transactions'].sum()):,}"),
-]
-for col, icon, label, val in cards:
-    col.markdown(kpi(icon, label, val), unsafe_allow_html=True)
-
-st.markdown("<br>", unsafe_allow_html=True)
-st.divider()
+st.markdown("<div style='margin-bottom:2rem;'></div>", unsafe_allow_html=True)
 
 # ══════════════════════════════════════════════
-# SECTION 2 – REVENUE STATISTICS
+# TABS
 # ══════════════════════════════════════════════
-st.markdown('<p class="section-title">📈 Revenue Statistics</p>', unsafe_allow_html=True)
+tab1, tab2, tab3 = st.tabs([
+    "📈  Overview & Trends",
+    "📊  Visualizations",
+    "🔍  EDA & Statistics",
+])
 
-rev = df['Revenue']
-mode_val = scipy_stats.mode(rev, keepdims=True).mode[0]
-dataset_shape = f"{df.shape[0]} rows × {df.shape[1]} cols"
-
-s1, s2, s3, s4 = st.columns(4)
-s1.markdown(stat_card("Mean Revenue",   f"${rev.mean():,.2f}"), unsafe_allow_html=True)
-s2.markdown(stat_card("Median Revenue", f"${rev.median():,.2f}"), unsafe_allow_html=True)
-s3.markdown(stat_card("Mode Revenue",   f"${mode_val:,.2f}"), unsafe_allow_html=True)
-s4.markdown(stat_card("Dataset Size",   dataset_shape), unsafe_allow_html=True)
-
-st.markdown("<br>", unsafe_allow_html=True)
-st.divider()
-
-# ══════════════════════════════════════════════
-# SECTION 3 – REVENUE TREND (full width)
-# ══════════════════════════════════════════════
-st.markdown('<p class="section-title">📉 Revenue Trend Over Time</p>', unsafe_allow_html=True)
-
-trend = (
-    df.groupby(['Year', 'Month of the year'])['Revenue']
-    .sum()
-    .reset_index()
-)
-trend['Period'] = (
-    trend['Year'].astype(str) + '-' +
-    trend['Month of the year'].astype(str).str.zfill(2)
-)
-trend = trend.sort_values('Period').reset_index(drop=True)
-
-fig, ax = make_fig(14, 4)
-x = range(len(trend))
-ax.plot(x, trend['Revenue'], color=PAL['accent'], linewidth=2.2,
-        marker='o', markersize=3.5, zorder=3)
-ax.fill_between(x, trend['Revenue'], alpha=0.12, color=PAL['accent'])
-
-step = max(1, len(trend) // 10)
-ax.set_xticks(list(x)[::step])
-ax.set_xticklabels(trend['Period'].iloc[::step], rotation=30, ha='right', fontsize=8)
-ax.yaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: f'${v:,.0f}'))
-style_ax(ax, 'Revenue Trend Over Time', 'Period', 'Revenue ($)')
-st.pyplot(fig)
-plt.close()
-
-st.divider()
-
-# ══════════════════════════════════════════════
-# SECTION 4 – VISUALIZATIONS GRID
-# ══════════════════════════════════════════════
-st.markdown('<p class="section-title">📊 Visualizations</p>', unsafe_allow_html=True)
-
-# ── Row 1 ──────────────────────────────────────
-col_l, col_r = st.columns(2, gap="medium")
-
-with col_l:
-    st.markdown("**Distribution of Sessions**")
-    fig, ax = make_fig()
-    sns.histplot(df['Sessions'], bins=28, kde=True, ax=ax,
-                 color=PAL['accent'], edgecolor=PAL['bg'], linewidth=0.3)
-    if ax.lines:
-        ax.lines[0].set_color(PAL['green'])
-    style_ax(ax, xlabel='Sessions', ylabel='Frequency')
-    st.pyplot(fig)
-    plt.close()
-
-with col_r:
-    st.markdown("**Top 10 Sources by Revenue**")
-    top = (
-        df.groupby('Source / Medium')['Revenue']
-        .sum()
-        .nlargest(10)
-        .reset_index()
-    )
-    fig, ax = make_fig()
-    bar_colors = [PAL['accent'] if i < 3 else PAL['muted'] for i in range(len(top))]
-    sns.barplot(data=top, x='Source / Medium', y='Revenue', ax=ax,
-                palette=bar_colors, hue='Source / Medium', legend=False)
-    ax.yaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: f'${v:,.0f}'))
-    style_ax(ax, xlabel='Source / Medium', ylabel='Revenue ($)')
-    plt.xticks(rotation=32, ha='right', fontsize=8)
-    st.pyplot(fig)
-    plt.close()
-
-# ── Row 2 ──────────────────────────────────────
-col_l2, col_r2 = st.columns(2, gap="medium")
-
-with col_l2:
-    st.markdown("**Sessions vs Revenue (coloured by Conversion Rate)**")
-    fig, ax = make_fig()
-    sc = ax.scatter(df['Sessions'], df['Revenue'],
-                    c=df['Conversion Rate (%)'],
-                    cmap='plasma', alpha=0.65, s=28, edgecolors='none')
-    cbar = fig.colorbar(sc, ax=ax)
-    cbar.ax.tick_params(colors=PAL['muted'], labelsize=8)
-    cbar.set_label('Conversion Rate (%)', color=PAL['muted'], fontsize=9)
-    ax.yaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: f'${v:,.0f}'))
-    style_ax(ax, xlabel='Sessions', ylabel='Revenue ($)')
-    st.pyplot(fig)
-    plt.close()
-
-with col_r2:
-    st.markdown("**Box Plot – Sessions vs Pageviews**")
-    fig, ax = make_fig()
-    bp = ax.boxplot(
-        [df['Sessions'].dropna().values, df['Pageviews'].dropna().values],
-        patch_artist=True,
-        labels=['Sessions', 'Pageviews'],
-        medianprops=dict(color=PAL['green'], linewidth=2)
-    )
-    box_colors = [PAL['accent'], PAL['orange']]
-    for patch, c in zip(bp['boxes'], box_colors):
-        patch.set_facecolor(c)
-        patch.set_alpha(0.7)
-    for w in bp['whiskers']: w.set_color(PAL['muted'])
-    for cap in bp['caps']:   cap.set_color(PAL['muted'])
-    for fl in bp['fliers']:
-        fl.set(marker='o', color=PAL['muted'], alpha=0.45, markersize=4)
-    style_ax(ax, ylabel='Value')
-    st.pyplot(fig)
-    plt.close()
-
-st.divider()
-
-# ══════════════════════════════════════════════
-# SECTION 5 – CORRELATION HEATMAP (full width)
-# ══════════════════════════════════════════════
-st.markdown('<p class="section-title">🔥 Correlation Heatmap</p>', unsafe_allow_html=True)
-
-corr = num_df.corr()
-mask = np.triu(np.ones_like(corr, dtype=bool), k=1)
-fig, ax = plt.subplots(figsize=(11, 6), facecolor=PAL['bg'])
-sns.heatmap(
-    corr, ax=ax,
-    annot=True, fmt='.2f',
-    mask=mask,
-    cmap='coolwarm', center=0,
-    linewidths=0.5, linecolor=PAL['bg'],
-    annot_kws={'size': 8, 'color': PAL['text']}
-)
-ax.set_title('Feature Correlation Matrix', color=PAL['text'], fontsize=13, fontweight='bold', pad=14)
-ax.tick_params(colors=PAL['muted'], labelsize=9)
-st.pyplot(fig)
-plt.close()
-
-st.divider()
-
-# ══════════════════════════════════════════════
-# SECTION 6 – EDA TABS
-# ══════════════════════════════════════════════
-st.markdown('<p class="section-title">🔍 Exploratory Data Analysis</p>', unsafe_allow_html=True)
-
-tab1, tab2, tab3 = st.tabs(["📋 Summary Statistics", "🗂️ Raw Data Preview", "❓ Missing Values"])
-
+# ─────────────────────────────────────────────
+# TAB 1 — OVERVIEW & TRENDS
+# ─────────────────────────────────────────────
 with tab1:
-    st.dataframe(num_df.describe().round(2), use_container_width=True)
+    st.markdown("<div style='margin-top:1.5rem;'></div>", unsafe_allow_html=True)
 
-with tab2:
-    st.dataframe(df.head(25), use_container_width=True)
+    # Revenue stat cards
+    rev      = df['Revenue']
+    mode_val = scipy_stats.mode(rev, keepdims=True).mode[0]
 
-with tab3:
-    missing = df.isnull().sum().reset_index()
-    missing.columns = ['Column', 'Missing Values']
-    missing['Status'] = missing['Missing Values'].apply(
-        lambda x: '✅ Complete' if x == 0 else f'⚠️ {x} missing'
+    s1, s2, s3, s4 = st.columns(4)
+    s1.markdown(stat_card("Mean Revenue",   f"${rev.mean():,.2f}"),      unsafe_allow_html=True)
+    s2.markdown(stat_card("Median Revenue", f"${rev.median():,.2f}"),    unsafe_allow_html=True)
+    s3.markdown(stat_card("Mode Revenue",   f"${mode_val:,.2f}"),        unsafe_allow_html=True)
+    s4.markdown(stat_card("Dataset Size",   f"{df.shape[0]} × {df.shape[1]}"), unsafe_allow_html=True)
+
+    st.markdown("<div style='margin-top:2rem;'></div>", unsafe_allow_html=True)
+
+    # Revenue trend
+    st.subheader("Revenue Trend Over Time")
+    trend = (
+        df.groupby(['Year', 'Month of the year'])['Revenue']
+        .sum().reset_index()
     )
-    st.dataframe(missing, use_container_width=True)
+    trend['Period'] = (
+        trend['Year'].astype(str) + '-' +
+        trend['Month of the year'].astype(str).str.zfill(2)
+    )
+    trend = trend.sort_values('Period').reset_index(drop=True)
 
-# ── Footer ──────────────────────────────────────
+    fig, ax = make_fig(14, 5)
+    x    = range(len(trend))
+    step = max(1, len(trend) // 10)
+    ax.plot(x, trend['Revenue'], color=PAL['cyan'], linewidth=2.5,
+            marker='o', markersize=4, markerfacecolor=PAL['bg'],
+            markeredgewidth=2, zorder=3)
+    ax.fill_between(x, trend['Revenue'], alpha=0.1, color=PAL['cyan'])
+    ax.set_xticks(list(x)[::step])
+    ax.set_xticklabels(trend['Period'].iloc[::step], rotation=30, ha='right', fontsize=8)
+    ax.yaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: f'${v:,.0f}'))
+    ax.grid(True, color=PAL['grid'], alpha=0.5, linestyle='--')
+    style_ax(fig, ax, xlabel='Period', ylabel='Revenue ($)')
+    st.pyplot(fig)
+    plt.close()
+
+    st.divider()
+
+    # Sessions trend
+    st.subheader("Sessions Trend Over Time")
+    s_trend = (
+        df.groupby(['Year', 'Month of the year'])['Sessions']
+        .sum().reset_index()
+    )
+    s_trend['Period'] = (
+        s_trend['Year'].astype(str) + '-' +
+        s_trend['Month of the year'].astype(str).str.zfill(2)
+    )
+    s_trend = s_trend.sort_values('Period').reset_index(drop=True)
+
+    fig, ax = make_fig(14, 5)
+    x2    = range(len(s_trend))
+    step2 = max(1, len(s_trend) // 10)
+    ax.fill_between(x2, s_trend['Sessions'], color=PAL['red'], alpha=0.12)
+    ax.plot(x2, s_trend['Sessions'], color=PAL['red'], linewidth=2.5, alpha=0.9)
+    ax.set_xticks(list(x2)[::step2])
+    ax.set_xticklabels(s_trend['Period'].iloc[::step2], rotation=30, ha='right', fontsize=8)
+    ax.yaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: f'{v:,.0f}'))
+    ax.grid(True, color=PAL['grid'], alpha=0.5, linestyle='--')
+    style_ax(fig, ax, xlabel='Period', ylabel='Sessions')
+    st.pyplot(fig)
+    plt.close()
+
+# ─────────────────────────────────────────────
+# TAB 2 — VISUALIZATIONS
+# ─────────────────────────────────────────────
+with tab2:
+    st.markdown("<div style='margin-top:1.5rem;'></div>", unsafe_allow_html=True)
+
+    # Row 1
+    col1, col2 = st.columns(2, gap="medium")
+
+    with col1:
+        st.subheader("Distribution of Sessions")
+        fig, ax = make_fig()
+        sns.histplot(df['Sessions'], bins=28, kde=True, ax=ax,
+                     color=PAL['purple'], edgecolor=PAL['bg'], linewidth=0.3, alpha=0.8)
+        if ax.lines:
+            ax.lines[0].set_color(PAL['cyan'])
+            ax.lines[0].set_linewidth(2.2)
+        ax.set_xlabel('Sessions', fontsize=10)
+        ax.set_ylabel('Frequency', fontsize=10)
+        ax.grid(True, color=PAL['grid'], alpha=0.5, linestyle='--')
+        style_ax(fig, ax)
+        st.pyplot(fig)
+        plt.close()
+
+    with col2:
+        st.subheader("Top 10 Sources by Revenue")
+        top = (
+            df.groupby('Source / Medium')['Revenue']
+            .sum().nlargest(10).reset_index()
+        )
+        fig, ax = make_fig()
+        bar_colors = [PAL['cyan'] if i < 3 else PAL['muted'] for i in range(len(top))]
+        ax.barh(top['Source / Medium'], top['Revenue'],
+                color=bar_colors, alpha=0.85, height=0.6)
+        ax.invert_yaxis()
+        ax.xaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: f'${v:,.0f}'))
+        ax.grid(True, axis='x', color=PAL['grid'], alpha=0.5, linestyle='--')
+        for i, val in enumerate(top['Revenue']):
+            ax.text(val + top['Revenue'].max() * 0.01, i,
+                    f'${val:,.0f}', va='center', fontsize=8,
+                    color=PAL['cyan'], fontweight='bold')
+        style_ax(fig, ax, xlabel='Revenue ($)')
+        st.pyplot(fig)
+        plt.close()
+
+    st.divider()
+
+    # Row 2
+    col3, col4 = st.columns(2, gap="medium")
+
+    with col3:
+        st.subheader("Sessions vs Revenue")
+        fig, ax = make_fig()
+        sc = ax.scatter(df['Sessions'], df['Revenue'],
+                        c=df['Conversion Rate (%)'],
+                        cmap='plasma', alpha=0.65, s=30, edgecolors='none')
+        cbar = fig.colorbar(sc, ax=ax)
+        cbar.ax.tick_params(colors=PAL['muted'], labelsize=8)
+        cbar.set_label('Conversion Rate (%)', color=PAL['muted'], fontsize=9)
+        ax.yaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: f'${v:,.0f}'))
+        ax.grid(True, color=PAL['grid'], alpha=0.5, linestyle='--')
+        style_ax(fig, ax, xlabel='Sessions', ylabel='Revenue ($)')
+        st.pyplot(fig)
+        plt.close()
+
+    with col4:
+        st.subheader("Box Plot – Sessions vs Pageviews")
+        fig, ax = make_fig()
+        bp = ax.boxplot(
+            [df['Sessions'].dropna().values, df['Pageviews'].dropna().values],
+            patch_artist=True, labels=['Sessions', 'Pageviews'],
+            medianprops=dict(color=PAL['cyan'], linewidth=2)
+        )
+        for patch, c in zip(bp['boxes'], [PAL['purple'], PAL['orange']]):
+            patch.set_facecolor(c)
+            patch.set_alpha(0.7)
+        for w   in bp['whiskers']: w.set_color(PAL['muted'])
+        for cap in bp['caps']:     cap.set_color(PAL['muted'])
+        for fl  in bp['fliers']:
+            fl.set(marker='o', color=PAL['red'], alpha=0.5, markersize=4)
+        ax.grid(True, axis='y', color=PAL['grid'], alpha=0.5, linestyle='--')
+        style_ax(fig, ax, ylabel='Value')
+        st.pyplot(fig)
+        plt.close()
+
+    st.divider()
+
+    # Correlation heatmap (full width)
+    st.subheader("Correlation Heatmap")
+    corr = num_df.corr()
+    mask = np.triu(np.ones_like(corr, dtype=bool), k=1)
+    fig, ax = plt.subplots(
+        figsize=(max(8, len(corr.columns) * 0.9), max(6, len(corr.columns) * 0.7)),
+        facecolor=PAL['bg']
+    )
+    sns.heatmap(
+        corr, mask=mask,
+        cmap=sns.diverging_palette(220, 10, as_cmap=True),
+        vmin=-1, vmax=1, center=0,
+        annot=True, fmt='.2f',
+        linewidths=0.5, linecolor=PAL['border'],
+        square=True, cbar_kws={"shrink": 0.8},
+        ax=ax, annot_kws={'size': 9, 'color': PAL['text']}
+    )
+    ax.set_title('Feature Correlation Matrix',
+                 color=PAL['text'], fontsize=13, fontweight='bold', pad=14)
+    ax.tick_params(colors=PAL['muted'], labelsize=9)
+    ax.set_facecolor(PAL['card'])
+    st.pyplot(fig)
+    plt.close()
+
+# ─────────────────────────────────────────────
+# TAB 3 — EDA & STATISTICS
+# ─────────────────────────────────────────────
+with tab3:
+    st.markdown("<div style='margin-top:1.5rem;'></div>", unsafe_allow_html=True)
+
+    # Data quality KPIs
+    st.subheader("Data Quality Overview")
+    q1, q2, q3, q4 = st.columns(4)
+    q1.metric("Total Rows",      f"{df.shape[0]:,}")
+    q2.metric("Total Columns",   f"{df.shape[1]}")
+    q3.metric("Duplicate Rows",  f"{load_raw_for_duplicates():,}")
+    q4.metric("Missing Values",  f"{int(df.isnull().sum().sum()):,}")
+
+    st.markdown("<div style='margin-top:1rem;'></div>", unsafe_allow_html=True)
+
+    # Column quality table
+    st.markdown("##### Column-wise Quality Summary")
+    col_records = [
+        {
+            "Column":        col,
+            "Data Type":     str(df[col].dtype),
+            "Missing Values": int(df[col].isnull().sum()),
+            "Missing %":     round(df[col].isnull().sum() / len(df) * 100, 2),
+            "Unique Values": int(df[col].nunique()),
+        }
+        for col in df.columns
+    ]
+    col_summary = pd.DataFrame(col_records)
+    st.dataframe(
+        st.dataframe(col_summary, use_container_width=True)
+        .background_gradient(subset=["Missing %"], cmap="YlOrRd", vmin=0, vmax=100)
+        .format({"Missing %": "{:.2f}%"}),
+        use_container_width=True, hide_index=True,
+        height=min(len(col_summary) * 38 + 40, 500)
+    )
+
+    st.divider()
+
+    # Descriptive statistics
+    st.subheader("Descriptive Statistics — Numeric Columns")
+    stat_records = [
+        {
+            "Column":  col,
+            "Mean":    round(num_df[col].mean(), 4),
+            "Median":  round(num_df[col].median(), 4),
+            "Mode":    round(scipy_stats.mode(num_df[col], keepdims=True).mode[0], 4),
+            "Std Dev": round(num_df[col].std(), 4),
+            "Min":     round(num_df[col].min(), 4),
+            "Max":     round(num_df[col].max(), 4),
+        }
+        for col in num_df.columns
+    ]
+    stat_df = pd.DataFrame(stat_records)
+    st.dataframe(
+        stat_df.style
+        .format({c: "{:.4f}" for c in ["Mean", "Median", "Mode", "Std Dev", "Min", "Max"]})
+        .set_properties(**{"text-align": "right"}),
+        use_container_width=True, hide_index=True,
+        height=min(len(stat_df) * 38 + 40, 400)
+    )
+
+    st.divider()
+
+    # Advanced visualizations
+    st.subheader("Advanced Visualizations")
+    st.markdown("<div style='margin-bottom:0.5rem;'></div>", unsafe_allow_html=True)
+
+    viz_l, viz_r = st.columns(2, gap="medium")
+
+    with viz_l:
+        st.markdown("**Missing Values by Column**")
+        missing_s = df.isnull().sum()
+        missing_s = missing_s[missing_s > 0].sort_values(ascending=True)
+        if missing_s.empty:
+            st.success("No missing values detected in any column.")
+        else:
+            fig, ax = make_fig(7, max(4, len(missing_s) * 0.5))
+            bars = ax.barh(missing_s.index, missing_s.values,
+                           color=PAL['orange'], alpha=0.85, height=0.6)
+            ax.set_xlabel('Missing Count', fontsize=10)
+            ax.grid(True, axis='x', color=PAL['grid'], alpha=0.5, linestyle='--')
+            for bar, val in zip(bars, missing_s.values):
+                ax.text(val + missing_s.max() * 0.01,
+                        bar.get_y() + bar.get_height() / 2,
+                        f'{val:,}', va='center', fontsize=9,
+                        color=PAL['cyan'], fontweight='bold')
+            style_ax(fig, ax)
+            st.pyplot(fig)
+            plt.close()
+
+    with viz_r:
+        st.markdown("**Distribution Plot — Select Column**")
+        selected_col = st.selectbox("Column", options=num_df.columns.tolist(), key="dist_sel")
+        fig, ax = make_fig(7, 4)
+        data = num_df[selected_col].dropna()
+        ax.hist(data, bins=40, color=PAL['green'], alpha=0.45,
+                edgecolor=PAL['card'], density=True, label='Histogram')
+        try:
+            kde_x = np.linspace(data.min(), data.max(), 300)
+            kde   = gaussian_kde(data)
+            ax.plot(kde_x, kde(kde_x), color=PAL['cyan'], linewidth=2.5, label='KDE')
+        except Exception:
+            pass
+        ax.set_xlabel(selected_col, fontsize=10)
+        ax.set_ylabel('Density', fontsize=10)
+        ax.legend(facecolor=PAL['card'], edgecolor=PAL['border'], labelcolor=PAL['muted'])
+        ax.grid(True, axis='y', color=PAL['grid'], alpha=0.5, linestyle='--')
+        style_ax(fig, ax)
+        st.pyplot(fig)
+        plt.close()
+
+    st.divider()
+
+    # Dataset Explorer sub-tabs
+    st.subheader("Dataset Explorer")
+    etab1, etab2, etab3 = st.tabs(
+        ["📋 Summary Statistics", "🗂️ Raw Data Preview", "❓ Missing Values"]
+    )
+    with etab1:
+        st.dataframe(num_df.describe().round(2), use_container_width=True)
+    with etab2:
+        st.dataframe(df.head(25), use_container_width=True)
+    with etab3:
+        mv = df.isnull().sum().reset_index()
+        mv.columns = ['Column', 'Missing Values']
+        mv['Status'] = mv['Missing Values'].apply(
+            lambda x: '✅ Complete' if x == 0 else f'⚠️ {x} missing'
+        )
+        st.dataframe(mv, use_container_width=True)
+
+# ── Footer ──
 st.markdown("<br>", unsafe_allow_html=True)
 st.markdown(
-    "<p style='text-align:center; color:#30363d; font-size:0.8rem;'>"
-    "Web Analytics Dashboard · Built with Streamlit & Matplotlib"
+    "<p style='text-align:center; color:#2D3748; font-size:0.8rem;'>"
+    "Web Analytics Dashboard &nbsp;·&nbsp; Built with Streamlit &amp; Matplotlib"
     "</p>",
     unsafe_allow_html=True
 )
