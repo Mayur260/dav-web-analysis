@@ -1,0 +1,19 @@
+# Large Data Files
+data/Cell_Phones_and_Accessories_5.csv
+data/meta_Cell_Phones_and_Accessories.json
+
+# Other data artifacts if needed
+data/*.csv
+!data/Web_Analytic_Dataset.csv
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+env/
+venv/
+.env
+
+# Streamlit
+.streamlit/
